@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="dark" />
+<link rel="icon" href="data:," />
+<title>Interactive Hand</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Archivo:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#060807;
+    --ink:#eef6f2;
+    --muted:#8aa39a;
+    --faint:#3d4f49;
+    --acc:#8fb0ff;
+    --line:rgba(238,246,242,.14);
+    --panel:rgba(10,14,12,.72);
+    --green:#007123;
+    --blue:#012C8B;
+    --red:#BD0100;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"Archivo",system-ui,sans-serif;
+    overflow:hidden;
+    -webkit-tap-highlight-color:transparent;
+  }
+  button{min-height:40px}
+  .stage{position:fixed; inset:0; display:flex; flex-direction:column}
+  canvas#field{
+    position:absolute; inset:0; width:100%; height:100%; display:block;
+    touch-action:none; cursor:crosshair;
+  }
+
+  /* top HUD bar */
+  .hud-top{
+    position:relative; z-index:3;
+    display:flex; justify-content:space-between; align-items:flex-start; gap:16px;
+    padding:18px 20px 0;
+    pointer-events:none;
+  }
+  .brand{pointer-events:none}
+  .brand h1{
+    margin:0; font-size:15px; letter-spacing:.14em; text-transform:uppercase; font-weight:700; line-height:1.1;
+  }
+  .brand h1 .g{color:#3fae62}.brand h1 .b{color:#7ea2ff}.brand h1 .r{color:#e2483d}
+  .brand p{margin:6px 0 0; font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.08em; color:var(--muted); text-transform:uppercase}
+  .readout{
+    font-family:"IBM Plex Mono",monospace; font-size:11px; line-height:1.7; color:var(--muted);
+    text-align:right; white-space:nowrap;
+  }
+  .readout b{color:var(--ink); font-weight:600}
+  .readout .acc{color:var(--acc)}
+
+  /* corner ticks */
+  .corner{position:absolute; width:18px; height:18px; border-color:var(--faint); border-style:solid; z-index:2; pointer-events:none}
+  .c-tl{top:64px; left:16px; border-width:1px 0 0 1px}
+  .c-tr{top:64px; right:16px; border-width:1px 1px 0 0}
+  .c-bl{bottom:96px; left:16px; border-width:0 0 1px 1px}
+  .c-br{bottom:96px; right:16px; border-width:0 1px 1px 0}
+
+  /* side labels */
+  .side{
+    position:absolute; top:50%; transform:translateY(-50%) rotate(180deg); writing-mode:vertical-rl;
+    font-family:"IBM Plex Mono",monospace; font-size:10px; letter-spacing:.22em; color:var(--faint); text-transform:uppercase; z-index:2; pointer-events:none;
+  }
+  .side.left{left:14px}
+  .side.right{right:14px; transform:translateY(-50%)}
+
+  /* bottom bar */
+  .hud-bottom{
+    position:relative; z-index:3; margin-top:auto;
+    padding:0 20px 18px;
+    display:flex; flex-direction:column; gap:14px;
+  }
+  .stats{
+    display:flex; flex-wrap:wrap; gap:8px 22px;
+    font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--muted); letter-spacing:.04em;
+  }
+  .stats span b{color:var(--ink); font-weight:600}
+  .stats .dotsep{color:var(--faint)}
+  .bar{
+    display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px;
+    border-top:1px solid var(--line); padding-top:14px;
+  }
+  .hint{font-size:13px; color:#c7d6cf; line-height:1.45; max-width:520px}
+  .hint strong{color:var(--ink)}
+  .hint em{font-style:normal; font-weight:600}
+  .hint .hg{color:#3fae62}.hint .hb{color:#7ea2ff}.hint .hr{color:#e2483d}
+  .actions{display:flex; gap:8px; flex-wrap:wrap}
+  .btn{
+    appearance:none; border:1px solid var(--line); background:var(--panel); color:var(--ink);
+    font-family:"IBM Plex Mono",monospace; font-size:12px; letter-spacing:.08em; text-transform:uppercase;
+    padding:10px 16px; border-radius:999px; cursor:pointer; min-width:96px;
+  }
+  .btn:active{transform:scale(.97)}
+  .btn.primary{border-color:rgba(238,246,242,.55); color:var(--ink)}
+  .btn:focus-visible{outline:2px solid var(--acc); outline-offset:2px}
+
+  .badge{
+    display:inline-flex; align-items:center; gap:7px;
+    font-family:"IBM Plex Mono",monospace; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted);
+  }
+  .badge i{width:7px;height:7px;border-radius:50%;background:var(--faint);display:inline-block}
+  .badge.on i{background:var(--ink); box-shadow:0 0 10px rgba(238,246,242,.8)}
+  .badge.on{color:var(--ink)}
+
+  @media (max-width:640px){
+    .hud-top{padding:14px 14px 0}
+    .brand h1{font-size:13px}
+    .brand p{font-size:10px}
+    .readout{font-size:10px; line-height:1.6}
+    .side{display:none}
+    .corner{display:none}
+    .hud-bottom{padding:0 14px 14px}
+    .hint{font-size:12.5px}
+    .bar{align-items:flex-start}
+    .btn{min-width:88px; padding:10px 13px}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .btn:active{transform:none}
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+  <canvas id="field" aria-label="Interactive dotted three-finger hand in green, blue and red, circled by the rotating words Sadar Dipalak, Sadar Dibakar, Sadar Dimiskinkan. Move your pointer or finger to bend it, touch a fingertip to fire a pulse in that fingertip's colour."></canvas>
+
+  <div class="corner c-tl"></div><div class="corner c-tr"></div><div class="corner c-bl"></div><div class="corner c-br"></div>
+  <div class="side left">Density field — 002</div>
+  <div class="side right">Three fingers · Three colours</div>
+
+  <header class="hud-top">
+    <div class="brand">
+      <h1>The Hand <span class="g">/</span><span class="b">/</span><span class="r">/</span> Sadar</h1>
+      <p>Shader dot field · Three-finger salute</p>
+    </div>
+    <div class="readout" aria-live="off">
+      <div>X <b id="roX">+000</b> &nbsp; Y <b id="roY">+000</b></div>
+      <div class="hide-sm">θ <b id="roA" class="acc">0.0°</b> &nbsp; DIST <b id="roD">—</b></div>
+      <div><span class="badge" id="stateBadge"><i></i><span id="roState">IDLE</span></span></div>
+    </div>
+  </header>
+
+  <footer class="hud-bottom">
+    <div class="stats">
+      <span>BEND <b id="stBend">0.00</b></span><span class="dotsep">·</span>
+      <span>SPRING <b id="stSpring">0.00</b></span><span class="dotsep">·</span>
+      <span>DOTS <b id="stDots">—</b></span><span class="dotsep">·</span>
+      <span>PULSES <b id="stPulses">0</b></span>
+    </div>
+    <div class="bar">
+      <p class="hint"><strong>Move</strong> to bend it — <strong>touch a fingertip</strong> and it pulses in its own colour: <em class="hg">green</em>, <em class="hb">blue</em>, <em class="hr">red</em> — <strong>tap</strong> anywhere on the hand for a pulse of that zone.</p>
+      <div class="actions">
+        <button class="btn" id="btnWave" type="button">Wave</button>
+        <button class="btn primary" id="btnPulse" type="button">Pulse</button>
+      </div>
+    </div>
+  </footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var canvas = document.getElementById('field');
+  var ctx = canvas.getContext('2d');
+  var roX=document.getElementById('roX'), roY=document.getElementById('roY'), roA=document.getElementById('roA'), roD=document.getElementById('roD'),
+      roState=document.getElementById('roState'), badge=document.getElementById('stateBadge'),
+      stBend=document.getElementById('stBend'), stSpring=document.getElementById('stSpring'), stDots=document.getElementById('stDots'), stPulses=document.getElementById('stPulses');
+
+  var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ---------- palette: the three zone colours ----------
+  var ZONES=[
+    {r:0,   g:113, b:35 },  // left   green #007123
+    {r:1,   g:44,  b:139},  // middle blue  #012C8B
+    {r:189, g:1,   b:0  }   // right  red   #BD0100
+  ];
+  function zoneOf(x){ return x < -0.125 ? 0 : (x > 0.125 ? 2 : 1); }
+  function shade(c,t){ // mix colour c toward white by t (0..1)
+    return [Math.round(c.r+(255-c.r)*t), Math.round(c.g+(255-c.g)*t), Math.round(c.b+(255-c.b)*t)];
+  }
+  function mix3(a,b,t){
+    return [Math.round(a[0]+(b[0]-a[0])*t), Math.round(a[1]+(b[1]-a[1])*t), Math.round(a[2]+(b[2]-a[2])*t)];
+  }
+  function rgba(c,a){ return 'rgba('+c[0]+','+c[1]+','+c[2]+','+a+')'; }
+
+  var W=0,H=0,DPR=1, CX=0, CY=0, R=0, orbitR=0, spacing=11, dotCount=0;
+
+  function resize(){
+    DPR = Math.min(window.devicePixelRatio||1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = Math.round(W*DPR); canvas.height = Math.round(H*DPR);
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    CX = W/2;
+    // centre the emblem slightly above the footer; on tall phones lift it into the visual middle
+    CY = (H > W*1.3) ? H*0.46 : H/2 - 10;
+    R = Math.min(W,H) * 0.335;
+    if (W < 520) R = Math.min(W,H)*0.35;
+    orbitR = R*1.17;
+    spacing = Math.max(9, Math.round(R/32));
+  }
+  window.addEventListener('resize', resize); resize();
+
+  // ---------- hand silhouette, traced from the line-art reference ----------
+  // The reference is a black outline on white; the silhouette is the area the
+  // outline encloses (flood-filled from the image itself, the open wrist
+  // closed with a straight cut at the bottom): three bunched fingers, middle
+  // tallest, thumb folded across the palm, folded little finger. A second
+  // bitmask traces the artwork's interior lines (finger separators, thumb
+  // band, little-finger fold) and renders them as creases.
+  // Both masks sampled over normalised coords x:[-0.60,0.60] y:[-1.06,1.02], cell 0.01.
+  var MASK_W=120, MASK_H=208, MASK_X0=-0.60, MASK_Y0=-1.06, MASK_CELL=0.01;
+  var MASK=(function(){
+    var s="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgP8DAAAAAAAAAAAAAAAA4P8PAAAAAAAAAAAAAAAA8P8fAAAAAAAAAAAAAAAA+P8/AAAAAAAAAAAAAAAA/P8/AAAAAAAAAAAAAAAA/P9/AAAAAAAAAAAAAPAP/v//AAAAAAAAAAAAAPw/////AAAAAAAAAAAAAP//////AQAAAAAAAAAAgP//////AQAAAAAAAAAAgP//////AQAAAAAAAAAAwP//////AQAAAAAAAAAAwP//////8Q8AAAAAAAAA8P////////8AAAAAAAAA8P////////8BAAAAAAAA8P////////8BAAAAAAAA+P////////8DAAAAAAAA+P////////8HAAAAAAAA+P////////8PAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8fAAAAAAAA+P////////8f/wEAAAAA+P///////////wcAAAAA+P///////////x8AAAAA+P///////////z8AAAAA+P///////////38AAAAA+P///////////38AAAAA+P////////////8AAAAA+P////////////8AAAAA+P////////////8BAAAA+P////////////8BAAAA+P////////////8BAAAA+P////////////8BAAAA+P////////////8DAAAA+P////////////8DAAAA+P////////////8DAAAA+P////////////8DAAAA+P////////////8DAAAA+P////////////8DAAAA+P////////////8DAAAA+P////////////8DAAAA+P////////////8DAAAA+P////////////8DAAAA+P////////////8DAAAA+P////////////8DAAAA+P////////////8BAAAA+P////////////8BAAAA+P////////////8BAAAA+P////////////8BAAAA+P////////////8BAAAA+P////////////8BAAAA+P////////////8BAAAA+P////////////8BAAAA+P////////////8BAAAA+P////////////8BAAAA+P////////////8BAAAA+P////////////8BAAAA+P////////////8BAAAA+P////////////8BAAAA+P////////////8BAAAA+P////////////8BAAAA+P////////////8BAAAA+P////////////8BAAAA+P////////////8BAAAA+P////////////8BAAAA+P////////////8BAAAA+P////////////8BAAAA+P////////////8BAAAA+P////////////8BAAAA/P////////////8BAAAA/v////////////8BAAAA/v////////////8BAAAA/v////////////8BAAAA/v////////////8BAAAA//////////////8BAAAA//////////////8BAACA//////////////8BAACA//////////////8BAACA//////////////8BAACA//////////////8BAACA//////////////8BAADA//////////////8BAADA//////////////8BAADA//////////////8BAADA//////////////8BAADA//////////////8AAADA//////////////8AAADA//////////////8AAADA//////////////8AAADA//////////////8AAADA//////////////8AAADA//////////////8AAADA/////////////38AAADA/////////////38AAACA/////////////38AAACA/////////////38AAACA/////////////38AAACA/////////////z8AAACA/////////////z8AAAAA/////////////z8AAAAA/////////////x8AAAAA/v///////////x8AAAAA/v///////////x8AAAAA/v///////////x8AAAAA/v///////////w8AAAAA/v///////////w8AAAAA/P///////////w8AAAAA+P///////////w8AAAAA+P///////////wcAAAAA8P///////////wcAAAAA4P///////////wcAAAAA4P///////////wMAAAAAgP///////////wMAAAAAgP///////////wEAAAAAgP///////////wEAAAAAAP///////////wAAAAAAAP///////////wAAAAAAAP7//////////wAAAAAAAPz/////////fwAAAAAAAPj/////////fwAAAAAAAPj/////////PwAAAAAAAPD/////////PwAAAAAAAPD/////////PwAAAAAAAPD/////////PwAAAAAAAOD/////////PwAAAAAAAOD/////////PwAAAAAAAOD/////////PwAAAAAAAOD/////////HwAAAAAAAOD/////////HwAAAAAAAOD/////////HwAAAAAAAOD/////////HwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    var bin=atob(s), out=new Uint8Array(MASK_W*MASK_H);
+    for(var i=0;i<out.length;i++){ out[i]=(bin.charCodeAt(i>>3)>>(i&7))&1; }
+    return out;
+  })();
+  function maskAt(sx, sy){
+    var gx=Math.floor((sx-MASK_X0)/MASK_CELL), gy=Math.floor((sy-MASK_Y0)/MASK_CELL);
+    if(gx<0||gy<0||gx>=MASK_W||gy>=MASK_H) return false;
+    return MASK[gy*MASK_W+gx]===1;
+  }
+  var CREASE=(function(){
+    var s="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHwAAAAAAAAAAAAAAAAAAPwAcAAAAAAAAAAAAAADgPwAcAAAAAAAAAAAAAADgPwAcAAAAAAAAAAAAAADAPwCcAwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8DwAAAAAAAAAAAACAPwD8DwAAAAAAAAAAAACAPwD8DwAAAAAAAAAAAACAPwD8BwAAAAAAAAAAAACAPwD8BwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8AwAAAAAAAAAAAACAPwD8A8ABAAAAAAAAAACAPwD8A8ABAAAAAAAAAACAPwD8A8ABAAAAAAAAAACAPwD8A8ABAAAAAAAAAACAPwD8A8ABAAAAAAAAAACAPwD8A8A/AAAAAAAAAACAPwD8A8A/AAAAAAAAAACAPwD8A8D/AAAAAAAAAACAPwD8A8D/AAAAAAAAAACAPwD8A8D/AAAAAAAAAACAPwD8A8D/AAAAAAAAAACAPwD8A8B/AAAAAAAAAACAPwD8A8A/AAAAAAAAAACAPwD8A8A/AAAAAAAAAACAPwD8A8A/AAAAAAAAAACAPwD8A8A/AAAAAAAAAACAPwD8A8A/AAAAAAAAAACAPwD8A8A/AAAAAAAAAACAPwD8A8A/AAAAAAAAAACAPwD8A8A/AAAAAAAAAACAPwD4A8A/AAAAAAAAAAAAPwD4AcA/AAAAAAAAAAAAAADgAcA/AAAAAAAAAAAAAAAAAMA/AAAAAAAAAAAAAAAAAMB/AAAAAAAAAAAAAAAAAP//HwAAAAAAAAAAAAD+////PwAAAAAAAAAAAPD/////PwAAAAAAAAAAAPj/////PwAAAAAAAAAAAP7/////PwAAAAAAAAAAgP//////PwAAAAAAAAAA+P//////PwAAAAAAAAAA/v//////PwAAAAAAAACA/////wHAPwAAAAAAAADA//8DAADAPwAAAAAAAADw/38AAADAPwAAAAAAAAD8/x8AAADAPwAAAAAAAAD//wMAAADgPwAAAAAAAMD//wAAAADgPwAAAAAAAPD/PwAAAADwHwAAAAAAAPj/HwAAAADwHwAAAAAAAPz/BwAAAAD4HwAAAAAAAPz/AQAAAAD+HwAAAAAAAPw/AAAAAOD/DwAAAAAAAPwPAAAAgP//BwAAAAAAAPwDAADw////AwAAAAAAAPwBAAD8////AwAAAAAAAHwAAAD/////AQAAAAAAAD4AAMD/////AAAAAAAAAA8AAOD/////AQcAAAAAAAcAAPz//////wcAAAAAAAAAAP///3/+/wcAAAAAAAAAwP///wf+/wcAAAAAAAAA4P//AQD8/wcAAAAAAAAA+P8fAAD4/wcAAAAAAAAA/P8HAADw/wcAAAAAAAAA//8AAADA/wcAAAAAAAAA/z8AAAAA/wEAAAAAAAAA/w8AAAAAAAAAAAAAAAAA/w8AAAAAAAAAAAAAAAAA/wcAAAAAAAAAAAAAAAAA/g8AAAAAAAAAAAAAAAAA/A8AAAAAAAAAAAAAAAAA+B8AAAAAAAAAAAAAAAAA8B8AAAAAAAAAAAAAAAAA8D8AAAAAAAAAAAAAAAAA4D8AAAAAAAAAAAAAAAAAwH8AAAAAAAAAAAAAAAAAwP8AAAAAAAAAAAAAAAAAwP8BAAAAAAAAAAAAAAAAgP8BAAAAAAAAAAAAAAAAAP8BAAAAAAAAAAAAAAAAAP8DAAAAAAAAAAAAAAAAAP4DAAAAAAAAAAAAAAAAAP4DAAAAAAAAAAAAAAAAAPwDAAAAAAAAAAAAAAAAAPgDAAAAAAAAAAAAAAAAAPgDAAAAAAAAAAAAAAAAAPgDAAAAAAAAAAAAAAAAAPgDAAAAAAAAAAAAAAAAAPADAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    var bin=atob(s), out=new Uint8Array(MASK_W*MASK_H);
+    for(var i=0;i<out.length;i++){ out[i]=(bin.charCodeAt(i>>3)>>(i&7))&1; }
+    return out;
+  })();
+  function creaseAt(sx, sy){
+    var gx=Math.floor((sx-MASK_X0)/MASK_CELL), gy=Math.floor((sy-MASK_Y0)/MASK_CELL);
+    if(gx<0||gy<0||gx>=MASK_W||gy>=MASK_H) return false;
+    return CREASE[gy*MASK_W+gx]===1;
+  }
+
+  // fingertips measured from the line-art reference; finger i carries zone colour i
+  var FINGERS=[
+    {x:-0.199, top:-0.931},
+    {x: 0.000, top:-1.000},
+    {x: 0.199, top:-0.875}
+  ];
+  // returns {inside, tip(0..1), tipZone, crease(bool)}
+  function handTest(sx, sy, t, waveAmp){
+    // gentle sway across the upper hand, stronger toward the fingertips
+    var tipFactor = Math.max(0, Math.min(1, (-sy+0.05)/0.65));
+    var wob = Math.sin(t*0.0052 + sx*2.2) * 0.022 * waveAmp * tipFactor;
+    var mx = sx - wob;
+    // fingertip glow falloff, measured from the traced fingertip positions
+    var tip=0, tipZone=1, i, f, dx, dy, d, thisTip;
+    for(i=0;i<3;i++){
+      f=FINGERS[i];
+      dx=mx-f.x; dy=sy-(f.top+0.01);
+      d=Math.sqrt(dx*dx+dy*dy);
+      thisTip=Math.max(0, 1 - d/0.19);
+      if(thisTip>tip){ tip=thisTip; tipZone=i; }
+    }
+    if(!maskAt(mx, sy)) return {inside:false, tip:tip, tipZone:tipZone, crease:false};
+    // creases: the artwork's own interior lines, traced into the CREASE mask
+    return {inside:true, tip:tip, tipZone:tipZone, crease:creaseAt(mx, sy)};
+  }
+
+  function nearestTip(nx, ny){
+    var best=-1, bestD=1e9;
+    for(var i=0;i<3;i++){
+      var dx=nx-FINGERS[i].x, dy=ny-(FINGERS[i].top+0.02);
+      var d=Math.sqrt(dx*dx+dy*dy);
+      if(d<bestD){ bestD=d; best=i; }
+    }
+    return bestD < 0.30 ? best : -1;
+  }
+
+  // ---------- pointer & pulses ----------
+  var pointer = { x:CX, y:CY, nx:0, ny:0, active:false, inside:false, down:false, lastMove:0 };
+  var pulses = []; // {nx,ny,t0,zone} — zone -1 = white
+  var pulseCount = 0;
+  var waveBurst = 0;
+  var grab = 0, grabVel = 0;
+
+  function setPointer(cx, cy){
+    pointer.x=cx; pointer.y=cy;
+    pointer.nx=(cx-CX)/R; pointer.ny=(cy-CY)/R;
+    pointer.active=true; pointer.lastMove=performance.now();
+    var d=Math.sqrt(pointer.nx*pointer.nx+pointer.ny*pointer.ny);
+    pointer.inside = d < 1.08;
+  }
+  function firePulse(nx, ny, zone, delay){
+    pulses.push({nx:nx, ny:ny, t0:performance.now()+(delay||0), zone:zone});
+    if(pulses.length>7) pulses.shift();
+    pulseCount++; stPulses.textContent=pulseCount;
+  }
+  canvas.addEventListener('pointermove', function(e){ setPointer(e.clientX, e.clientY); });
+  canvas.addEventListener('pointerdown', function(e){
+    setPointer(e.clientX, e.clientY);
+    pointer.down=true;
+    grabVel += 5.2;
+    var tip = nearestTip(pointer.nx, pointer.ny);
+    if(tip >= 0){
+      // touched a fingertip: pulse in that fingertip's own colour, from the tip
+      firePulse(FINGERS[tip].x, FINGERS[tip].top+0.02, tip, 0);
+    } else if(Math.abs(pointer.nx)<0.55 && pointer.ny>-1.10 && pointer.ny<1.00){
+      // touched the hand: pulse in the colour of the zone touched
+      firePulse(pointer.nx, pointer.ny, zoneOf(pointer.nx), 0);
+    } else {
+      firePulse(pointer.nx, pointer.ny, -1, 0);
+    }
+    try{ canvas.setPointerCapture(e.pointerId); }catch(_){}
+  });
+  function endPointer(){ pointer.down=false; }
+  canvas.addEventListener('pointerup', endPointer);
+  canvas.addEventListener('pointercancel', endPointer);
+  canvas.addEventListener('pointerleave', function(){ pointer.active=false; pointer.inside=false; });
+
+  document.getElementById('btnPulse').addEventListener('click', function(){
+    // all three fingertips pulse at once, each in its own colour
+    for(var i=0;i<3;i++) firePulse(FINGERS[i].x, FINGERS[i].top+0.02, i, i*110);
+    grabVel += 5.2;
+  });
+  document.getElementById('btnWave').addEventListener('click', function(){ waveBurst = 1; });
+
+  // ---------- spring lean ----------
+  var lean = {x:0, y:0, vx:0, vy:0};
+  var hoverAmt = 0;
+
+  // ---------- circulating hashtag ring ----------
+  var ORBIT_SEQ = '#Sadar Dipalak · #Sadar Dibakar · #Sadar Dimiskinkan · ';
+  function drawOrbit(now){
+    var fs = W < 520 ? 9 : 10;
+    ctx.font = '600 ' + fs + 'px "IBM Plex Mono", monospace';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    var charW = ctx.measureText('M').width || fs*0.6;
+    var circ = 2*Math.PI*orbitR;
+    var repeats = Math.max(1, Math.round(circ/(ORBIT_SEQ.length*charW*1.5)));
+    var total = ORBIT_SEQ.length*repeats;
+    var step = (Math.PI*2)/total;
+    // one slow revolution ≈ 70 s; static when reduced motion is preferred
+    var rot = -Math.PI/2 + (reduced ? 0 : now*0.00009);
+    ctx.fillStyle = 'rgba(240,246,243,.92)';
+    var idx = 0;
+    for(var r=0;r<repeats;r++){
+      for(var i=0;i<ORBIT_SEQ.length;i++){
+        var a = rot + idx*step;
+        var x = CX + Math.cos(a)*orbitR, y = CY + Math.sin(a)*orbitR;
+        ctx.save();
+        ctx.translate(x,y);
+        ctx.rotate(a + Math.PI/2);
+        ctx.fillText(ORBIT_SEQ[i], 0, 0);
+        ctx.restore();
+        idx++;
+      }
+    }
+  }
+
+  var frame=0;
+  function draw(now){
+    frame++;
+    var t = now;
+
+    var idleX = reduced?0:Math.sin(t*0.00042)*0.05;
+    var idleY = reduced?0:Math.cos(t*0.00031)*0.03;
+    var tx, ty;
+    if(pointer.active){
+      var clampN = Math.max(-1.35, Math.min(1.35, pointer.nx));
+      var clampNy = Math.max(-1.35, Math.min(1.35, pointer.ny));
+      tx = clampN*0.16; ty = clampNy*0.10;
+    } else { tx=idleX; ty=idleY; }
+
+    var K=0.085, DAMP=0.76;
+    lean.vx = (lean.vx + (tx-lean.x)*K)*DAMP;
+    lean.vy = (lean.vy + (ty-lean.y)*K)*DAMP;
+    lean.x += lean.vx; lean.y += lean.vy;
+
+    var hTarget = (pointer.inside || waveBurst>0.02) ? 1 : 0;
+    hoverAmt += (hTarget-hoverAmt)*0.06;
+    if(waveBurst>0) waveBurst*=0.985;
+    var waveAmp = 0.25 + hoverAmt*1.15 + waveBurst*1.6;
+
+    grabVel += (0-grab)*0.16; grabVel*=0.72; grab += grabVel*0.12;
+    var squeeze = 1 - Math.max(-0.06, Math.min(0.11, grab*0.10));
+
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle='#060807'; ctx.fillRect(0,0,W,H);
+
+    var half = R*1.24;
+    var x0 = CX-half, x1 = CX+half, y0 = CY-half, y1 = CY+half;
+    var count=0;
+
+    for(var pi=pulses.length-1; pi>=0; pi--){ if((now-pulses[pi].t0)/1300>1) pulses.splice(pi,1); }
+
+    for(var gy=y0; gy<=y1; gy+=spacing){
+      for(var gx=x0; gx<=x1; gx+=spacing){
+        count++;
+        var nx=(gx-CX)/R, ny=(gy-CY)/R;
+        var rad=Math.sqrt(nx*nx+ny*ny);
+
+        // --- shape sampling with bend ---
+        var hf = Math.pow(Math.max(0, Math.min(1,(0.68-ny)/1.5)), 1.35);
+        var sx = (nx - lean.x*hf*1.7);
+        var sy = (ny - lean.y*hf*0.7);
+        sx = sx*squeeze; sy = 0.05 + (sy-0.05)*squeeze;
+
+        var h = handTest(sx, sy, t, waveAmp);
+
+        // pointer proximity glow
+        var pGlow=0;
+        if(pointer.active){
+          var pdx=nx-pointer.nx, pdy=ny-pointer.ny; var pd=Math.sqrt(pdx*pdx+pdy*pdy);
+          pGlow=Math.max(0, 1-pd/0.42);
+        }
+        // pulse rings (coloured by their zone)
+        var pulseBoost=0, pR=0, pG=0, pB=0;
+        for(var p=0;p<pulses.length;p++){
+          var age=(now-pulses[p].t0)/1300;
+          if(age<0) continue;
+          var pr=age*1.9;
+          var pdd=Math.sqrt((nx-pulses[p].nx)*(nx-pulses[p].nx)+(ny-pulses[p].ny)*(ny-pulses[p].ny));
+          var b=Math.exp(-Math.abs(pdd-pr)*7.5) * (1-age) * 1.15;
+          if(b<=0.003) continue;
+          var pc = pulses[p].zone>=0 ? shade(ZONES[pulses[p].zone], .45) : [238,246,242];
+          pulseBoost += b; pR += pc[0]*b; pG += pc[1]*b; pB += pc[2]*b;
+        }
+
+        var size, alpha, col;
+        var flutter = reduced?0:Math.sin(t*0.0022 + gx*0.045 + gy*0.03)*0.14;
+
+        if(h.inside){
+          var zc = ZONES[zoneOf(sx)];
+          if(h.crease){
+            size=spacing*0.16; alpha=0.30; col=shade(zc,.05);
+          } else {
+            size = spacing*(0.30 + h.tip*0.14 + hoverAmt*0.05) + flutter*1.1;
+            alpha = 0.94;
+            // base zone colour, lifted so it reads on black; fingertips glow toward white
+            col = shade(zc, 0.16 + h.tip*0.40 + hoverAmt*0.04);
+          }
+        } else if(rad < 1.24){
+          // faint density field around the hand, tinted near a glowing fingertip
+          var halo = h.tip*0.5;
+          size = spacing*(0.10 + halo*0.16);
+          alpha = 0.13 + halo*0.38 + pGlow*0.10;
+          col = halo>0.02 ? mix3([238,246,242], shade(ZONES[h.tipZone],.45), halo*0.75) : [238,246,242];
+          if(rad>1.06){ alpha*=0.55; size*=0.8; }
+        } else {
+          continue;
+        }
+
+        if(pGlow>0 && h.inside){ alpha=Math.min(1, alpha+pGlow*0.18); size+=pGlow*1.1; }
+        if(pulseBoost>0){
+          alpha=Math.min(1, alpha+pulseBoost*0.5);
+          size+=pulseBoost*1.6;
+          var pAvg=[pR/pulseBoost, pG/pulseBoost, pB/pulseBoost];
+          col = mix3(col, pAvg, Math.min(1,pulseBoost)*0.65);
+        }
+
+        ctx.fillStyle=rgba(col, Math.min(1,alpha).toFixed(3));
+        ctx.beginPath();
+        ctx.arc(gx, gy, Math.max(0.6, size*0.5), 0, 6.2832);
+        ctx.fill();
+      }
+    }
+    dotCount=count;
+    if(frame%6===0) stDots.textContent = dotCount.toLocaleString('en-US');
+
+    // circulating hashtag text around the hand
+    drawOrbit(t);
+
+    // fingertip tracker lines — each in its fingertip's colour, only when close
+    if(pointer.active && pointer.inside){
+      ctx.lineWidth=1;
+      for(var i=0;i<3;i++){
+        var f=FINGERS[i];
+        var hf2=Math.pow(Math.max(0,Math.min(1,(0.68-(f.top))/1.5)),1.35);
+        var tipX=CX + (f.x + lean.x*hf2*1.7)*R;
+        var tipY=CY + (f.top+0.02 + lean.y*hf2*0.7)*R;
+        var gradA = 0.10 + hoverAmt*0.16;
+        ctx.strokeStyle=rgba(shade(ZONES[i],.35), gradA.toFixed(3));
+        ctx.beginPath(); ctx.moveTo(tipX,tipY); ctx.lineTo(pointer.x, pointer.y); ctx.stroke();
+        ctx.fillStyle=rgba(shade(ZONES[i],.35), .9);
+        ctx.beginPath(); ctx.arc(tipX,tipY,2.1,0,6.2832); ctx.fill();
+      }
+      // pointer reticle
+      ctx.strokeStyle='rgba(238,246,242,.5)';
+      ctx.beginPath(); ctx.arc(pointer.x,pointer.y,9,0,6.2832); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(pointer.x-14,pointer.y); ctx.lineTo(pointer.x-4,pointer.y);
+      ctx.moveTo(pointer.x+4,pointer.y); ctx.lineTo(pointer.x+14,pointer.y);
+      ctx.moveTo(pointer.x,pointer.y-14); ctx.lineTo(pointer.x,pointer.y-4);
+      ctx.moveTo(pointer.x,pointer.y+4); ctx.lineTo(pointer.x,pointer.y+14);
+      ctx.stroke();
+    }
+
+    // HUD (throttled)
+    if(frame%4===0){
+      var dx = pointer.active? Math.round(pointer.x-CX):0;
+      var dy = pointer.active? Math.round(pointer.y-CY):0;
+      roX.textContent=(dx>=0?'+':'−')+String(Math.abs(dx)).padStart(3,'0');
+      roY.textContent=(dy>=0?'+':'−')+String(Math.abs(dy)).padStart(3,'0');
+      var ang = pointer.active? (Math.atan2(-pointer.ny, pointer.nx)*180/Math.PI):0;
+      roA.textContent=ang.toFixed(1)+'°';
+      roD.textContent=pointer.active? Math.round(Math.sqrt(dx*dx+dy*dy))+' px':'—';
+      var state = pointer.down?'GRAB':(pulses.length?'PULSE':(pointer.inside?'HOVER':(pointer.active?'TRACK':'IDLE')));
+      roState.textContent=state;
+      badge.className='badge'+((state==='HOVER'||state==='GRAB'||state==='PULSE')?' on':'');
+      stBend.textContent=(lean.x>=0?'+':'')+lean.x.toFixed(2);
+      stSpring.textContent=Math.abs(lean.vx*10).toFixed(2);
+    }
+
+    requestAnimationFrame(draw);
+  }
+  requestAnimationFrame(draw);
+})();
+</script>
+</body>
+</html>

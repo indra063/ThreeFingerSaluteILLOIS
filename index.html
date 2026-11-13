@@ -112,6 +112,16 @@
   .badge.on i{background:var(--ink); box-shadow:0 0 10px rgba(238,246,242,.8)}
   .badge.on{color:var(--ink)}
 
+  /* fingertip hashtag note */
+  .tip-note{
+    position:absolute; z-index:4; pointer-events:none;
+    font-family:"IBM Plex Mono",monospace; font-size:13px; font-weight:600; letter-spacing:.06em;
+    padding:6px 10px; border-radius:999px; background:var(--panel); border:1px solid var(--line);
+    color:var(--ink); white-space:nowrap;
+    opacity:0; transform:translate(-50%,-50%) scale(.92); transition:opacity .3s ease, transform .3s ease;
+  }
+  .tip-note.show{opacity:1; transform:translate(-50%,-50%) scale(1);}
+
   @media (max-width:640px){
     .hud-top{padding:14px 14px 0}
     .brand h1{font-size:13px}
@@ -247,6 +257,23 @@
     {x: 0.000, top:-1.000},
     {x: 0.199, top:-0.875}
   ];
+  // each fingertip carries its own hashtag, shown as a note when touched
+  var TAGS=['#Sadar Dipalak','#Sadar Dibakar','#Sadar Dimiskinkan'];
+  function showTag(zone, nx, ny){
+    var c = shade(ZONES[zone], .45);
+    var el = document.createElement('div');
+    el.className='tip-note';
+    el.textContent=TAGS[zone];
+    el.style.color='rgb('+c[0]+','+c[1]+','+c[2]+')';
+    el.style.borderColor='rgba('+c[0]+','+c[1]+','+c[2]+',.55)';
+    el.style.left=(CX+nx*R)+'px';
+    el.style.top=(CY+(ny-0.30)*R)+'px';
+    document.querySelector('.stage').appendChild(el);
+    void el.offsetWidth; // restart the transition so it fades in
+    el.classList.add('show');
+    setTimeout(function(){ el.classList.remove('show'); }, 2300);
+    setTimeout(function(){ el.remove(); }, 2700);
+  }
   // returns {inside, tip(0..1), tipZone, crease(bool)}
   function handTest(sx, sy, t, waveAmp){
     // gentle sway across the upper hand, stronger toward the fingertips
@@ -305,6 +332,7 @@
     if(tip >= 0){
       // touched a fingertip: pulse in that fingertip's own colour, from the tip
       firePulse(FINGERS[tip].x, FINGERS[tip].top+0.02, tip, 0);
+      showTag(tip, FINGERS[tip].x, FINGERS[tip].top+0.02);
     } else if(Math.abs(pointer.nx)<0.55 && pointer.ny>-1.10 && pointer.ny<1.00){
       // touched the hand: pulse in the colour of the zone touched
       firePulse(pointer.nx, pointer.ny, zoneOf(pointer.nx), 0);
@@ -319,8 +347,11 @@
   canvas.addEventListener('pointerleave', function(){ pointer.active=false; pointer.inside=false; });
 
   document.getElementById('btnPulse').addEventListener('click', function(){
-    // all three fingertips pulse at once, each in its own colour
-    for(var i=0;i<3;i++) firePulse(FINGERS[i].x, FINGERS[i].top+0.02, i, i*110);
+    // all three fingertips pulse at once, each in its own colour, and show their hashtags
+    for(var i=0;i<3;i++){
+      firePulse(FINGERS[i].x, FINGERS[i].top+0.02, i, i*110);
+      (function(j){ setTimeout(function(){ showTag(j, FINGERS[j].x, FINGERS[j].top+0.02); }, j*110); })(i);
+    }
     grabVel += 5.2;
   });
   document.getElementById('btnWave').addEventListener('click', function(){ waveBurst = 1; });
